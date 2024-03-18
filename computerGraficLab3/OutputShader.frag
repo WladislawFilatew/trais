@@ -4,6 +4,7 @@ uniform vec3 u_pos;
 //uniform float u_time;
 
 const float MAX_DIST = 99999.0;
+const int MAX_REF = 100;
 
 //Поворот матрицы
 mat2 rot(float a) {
@@ -33,9 +34,9 @@ Camera CameraInit(vec3 Pos, vec3 rd){
 struct Sphere{
 	vec3 Position;
 	float Radius;
-	vec3 Color;
+	vec4 Color;
 };
-Sphere SphereInit(vec3 Pos, float r, vec3 color){
+Sphere SphereInit(vec3 Pos, float r, vec4 color){
 	Sphere sphere;
 	sphere.Position = Pos;
 	sphere.Radius = r;
@@ -61,10 +62,10 @@ vec2 sphIntersect(Camera camera,Sphere sphere) {
 struct Box{
 	vec3 Position;
 	vec3 Size;
-	vec3 Color;
+	vec4 Color;
 	vec3 Norm;
 };
-Box BoxInit(vec3 Pos, vec3 size, vec3 color){
+Box BoxInit(vec3 Pos, vec3 size, vec4 color){
 	Box box;
 	box.Position = Pos;
 	box.Size = size;
@@ -138,10 +139,10 @@ struct Tetra{
 	vec3 Position;
 	float Radius;
 	vec3 Norm;
-	vec3 Color;
+	vec4 Color;
 };
 
-Tetra tetraInit(vec3 pos, float r, vec3 color){
+Tetra tetraInit(vec3 pos, float r, vec4 color){
 	Tetra tetra;
 	tetra.Position = pos;
 	tetra.Radius = r;
@@ -210,21 +211,23 @@ void SkyInit(){
 }
 vec3 getSky(vec3 rd) {
 	vec3 sun = sky.SunColor;
+	vec3 col = sky.SkyColor;
 	sun *= max(0.0, pow(dot(rd, sky.light), 32.0));
-	return clamp(sun + sky.SkyColor, 0.0, 1.0);
+	col *= max(0.0, dot(sky.light, vec3(0.0, 0.0, -1.0)));
+	return clamp(sun + col, 0.0, 1.0);
 }
 
 
-vec3 castRay(inout Camera camera) {
-	vec3 col;
+vec4 castRay(inout Camera camera) {
+	vec4 col;
 	vec2 minIt = vec2(MAX_DIST);
 	vec2 it;
 	vec3 n;
 
 	vec3 ro = camera.Position;
 	vec3 rd = camera.Direction;
-
-	Tetra tetra = tetraInit(vec3(-3,-1,1),2.0,vec3(1.0, 1.0, 0.0));
+	
+	Tetra tetra = tetraInit(vec3(-3,-1,1),2.0,vec4(1.0, 1.0, 0.0, 0.0));
 	it = tetraIntersection(camera, tetra);
 	if(it.x > 0.0 && it.x < minIt.x) {
 		minIt = it;
@@ -236,7 +239,7 @@ vec3 castRay(inout Camera camera) {
 
 	
 
-	Sphere sphere = SphereInit(vec3(0.0, -1.0, 0.0),1,vec3(1.0, 0.2, 0.1));
+	Sphere sphere = SphereInit(vec3(0.0, -1.0, 0.0),1,vec4(1.0, 0.2, 0.1,0.0));
 	it = sphIntersect(camera, sphere);
 	if(it.x > 0.0 && it.x < minIt.x) {
 		minIt = it;
@@ -244,9 +247,9 @@ vec3 castRay(inout Camera camera) {
 		n = itPos - sphere.Position;
 		col = sphere.Color;
 	}
+	
 
-
-	Box box = BoxInit(vec3(0.0, 2.0, 0.0),vec3(1.0),vec3(0.4, 0.6, 0.8));
+	Box box = BoxInit(vec3(0.0, 2.0, 0.0),vec3(1.0),vec4(0.4, 0.6, 0.8, 0.0));
 	it = boxIntersection(camera,box);
 	if(it.x > 0.0 && it.x < minIt.x) {
 		minIt = it;
@@ -254,6 +257,24 @@ vec3 castRay(inout Camera camera) {
 		col = box.Color;
 	}
 	
+
+
+	box = BoxInit(vec3(10.0, 2.0, 0.0),vec3(1.0),vec4(0.4, 0.6, 0.8, 0.95));
+	it = boxIntersection(camera,box);
+	if(it.x > 0.0 && it.x < minIt.x) {
+		minIt = it;
+		n = box.Norm;
+		col = box.Color;
+	}
+
+	box = BoxInit(vec3(10.0, -2.0, 0.0),vec3(1.0),vec4(0.4, 0.6, 0.8, 0.95));
+	it = boxIntersection(camera,box);
+	if(it.x > 0.0 && it.x < minIt.x) {
+		minIt = it;
+		n = box.Norm;
+		col = box.Color;
+	}
+
 	
 
 	vec3 planeNormal = vec3(0.0, 0.0, -1.0);
@@ -261,19 +282,18 @@ vec3 castRay(inout Camera camera) {
 	if(it.x > 0.0 && it.x < minIt.x) {
 		minIt = it;
 		n = planeNormal;
-		col = vec3(0.5);
+		col = vec4(0.5, 0.5, 0.5, 0.0);
 	}
 
 
 
-	if(minIt.x == MAX_DIST) return vec3(-1.0);
-
+	if(minIt.x == MAX_DIST) return vec4(-1.0);
 	float diffuse = max(0.0, dot(sky.light, n));
 	float specular = max(0.0, pow(dot(reflect(rd, n), sky.light), 32.0));
-	col *= mix(diffuse, specular, 0.5);
+	vec3 shade = vec3(mix(diffuse, specular, 0.5));
+	col.rgb *= mix(shade, vec3(1.0), col.a);
 	ro += rd * (minIt.x - 0.001);
-	//rd = reflect(rd, n);
-
+	rd = reflect(rd, n);
 
 	camera.Position = ro;
 	camera.Direction = rd;
@@ -281,13 +301,34 @@ vec3 castRay(inout Camera camera) {
 	return col;
 }
 
+/*
+Старый метод
 vec3 traceRay(Camera camera) {
 	vec3 col = castRay(camera);
 	if(col.x == -1.0) return getSky(camera.Direction);
 	Camera newCamer = CameraInit(camera.Position, sky.light);
-	if(castRay(newCamer).x != -1.0) col *= 0.5;
+	//if(castRay(newCamer).x != -1.0) col *= 0.5; //Отрисовка тений
 	return col;
 }
+*/
+
+vec3 traceRay(Camera camera) {
+	vec3 col = vec3(dot(sky.light, vec3(0.0, 0.0, -1.0)));
+	float reflectivity = 1.0;
+	for(int i = 0; i < MAX_REF; i++)
+	{
+		vec4 refCol = castRay(camera);
+		if(refCol.x == -1.0) return mix(col, col * getSky(camera.Direction), reflectivity);
+		Camera newCamer = CameraInit(camera.Position, sky.light);
+		if(castRay(newCamer).x != -1.0) refCol.rgb *= vec3(refCol.a);
+		col *= mix(vec3(1.0), refCol.rgb, reflectivity);
+		reflectivity *= refCol.a;
+	}
+	return col;
+}
+
+
+
 
 void main() {
 	SkyInit();
